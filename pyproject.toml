@@ -1,0 +1,13 @@
+[project]
+name = "kev-code-verify"
+version = "0.1.0"
+description = "Execution-labelled data, training image and fine-tunes for Jev-style code-verification judges"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    "datasets>=5.0.1",
+    "huggingface-hub>=1.33.0",
+    "numpy>=2.5.3",
+    "tokenizers>=0.23.2",
+]
