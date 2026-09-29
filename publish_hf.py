@@ -25,7 +25,7 @@ RUNS = {  # run -> (repo name, one-line summary)
     "code-verify-08b-v1": ("kev-0.8b-code-verify-v1", "first fine-tune"),
     "code-verify-4b-v1": ("kev-4b-code-verify-v1", "4B, trained on a bf16 backbone on a single L4"),
 }
-PROJECT_URL = os.environ.get("PROJECT_URL", "")   # set once the public GitHub project exists
+PROJECT_URL = os.environ.get("PROJECT_URL", "https://github.com/jtatman/kev-code-verify")
 COLLECTION = "Kev code-verify router judges"
 # training-data sources -> (upstream model, license, obligation); outputs of these models are the attempts judged
 SOURCES = {
