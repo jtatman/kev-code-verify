@@ -12,13 +12,15 @@ import sys
 import urllib.request
 
 API = "https://api.salad.com/api/public"
+# Cloudflare in front of the API rejects Python's default urllib user-agent (error 1010)
+USER_AGENT = "kev-code-verify/0.1 (+https://github.com/jtatman/kev-code-verify)"
 
 
 def call(method, path):
     url = (f"{API}/organizations/{os.environ['SALAD_ORGANIZATION']}/projects/{os.environ['SALAD_PROJECT']}"
            f"/containers/{os.environ['SALAD_CONTAINER_GROUP_NAME']}{path}")
     req = urllib.request.Request(url, method=method, headers={"Salad-Api-Key": os.environ["SALAD_API_KEY"],
-                                                              "accept": "application/json"})
+                                                              "accept": "application/json", "user-agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=60) as resp:
         body = resp.read()
     return json.loads(body) if body else {}

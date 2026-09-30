@@ -40,8 +40,12 @@ fi
 log "job finished with status ${status}"
 
 if [[ -n "${SALAD_API_KEY:-}" && -n "${SALAD_CONTAINER_GROUP_NAME:-}" ]]; then
-    /opt/kev/bin/python /opt/app/salad.py stop || log "could not stop the container group; stop it in the portal"
-    exec sleep infinity   # until Salad stops us; exiting would make Salad restart the job
+    if /opt/kev/bin/python /opt/app/salad.py stop; then
+        exec sleep infinity   # the stop is on its way; exiting first could look like a failure and be restarted
+    fi
+    # never sit idle and billing: exit instead (with restart_policy=on_failure a clean exit is not restarted,
+    # and a restarted job skips work already published to HF_REPO)
+    log "could not stop the container group; exiting with status ${status}"
 fi
 [[ "${KEEP_ALIVE:-0}" == 1 ]] && exec sleep infinity
 exit "${status}"

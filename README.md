@@ -16,7 +16,7 @@ the data pipeline, a portable training image, and the scripts that ran each fine
 execution-labelled attempts by nine coders, generated tests, evidence, and the Kev/Laya training files
 (`load_dataset("jtatman/kev-code-verify-data", "kev")`).
 
-**Training image:** `ghcr.io/jtatman/kev-trainer:0.1.0` ([docker/](docker/README.md)): Kev's own trainer at a pinned
+**Training image:** `ghcr.io/jtatman/kev-trainer:0.1.1` ([docker/](docker/README.md)): Kev's own trainer at a pinned
 commit, torch 2.8 + CUDA 12.8, a separate Laya env, Tailscale/sshd for remote access. Runs on SaladCloud, Hugging Face
 Jobs, rented VMs and local Docker.
 
@@ -58,7 +58,7 @@ python gen_evidence.py
 python build_finetune.py --holdout or:llama-3.1-8b         # or use the published splits: DATA_REPO=jtatman/kev-code-verify-data
 # 4. fine-tune (any of)
 docker run --gpus all -e JOB=kev -e RUN_NAME=my-run -e HF_REPO=you/kev-code-verify-mine -e HF_TOKEN=... \
-    -v $PWD/finetune/kev:/workspace/data ghcr.io/jtatman/kev-trainer:0.1.0
+    -v $PWD/finetune/kev:/workspace/data ghcr.io/jtatman/kev-trainer:0.1.1
 python salad/deploy.py create my-run --run-name my-run --hf-repo you/... --data-repo you/...   # SaladCloud
 MAX_HOURS=3 colab/run_kev_finetune.sh my-run L4 jaredpalmer/kev-0.8b                         # Google Colab
 # 5. evaluate against the base model, alone and blended with the evidence score

@@ -6,7 +6,7 @@ secrets (HF_TOKEN, optional TAILSCALE_AUTH_KEY) are passed to the container as e
 
   python salad/deploy.py gpus                                   # GPU classes available to the organization
   python salad/deploy.py create <name> --run-name code-verify-08b-v3 --hf-repo you/kev-...-v3 \
-        --data-repo you/<dataset> [--init jaredpalmer/kev-4b --bf16] [--gpu "RTX 3090" --gpu "RTX 4090"]
+        --data-repo jtatman/kev-code-verify-data [--init jaredpalmer/kev-4b --bf16] [--gpu "RTX 3090 (24 GB)"]
   python salad/deploy.py start|status|stop|delete <name>
 
 The group uses restart_policy=on_failure (a finished job is not rerun) and passes its own coordinates so the
@@ -23,7 +23,9 @@ import urllib.request
 from pathlib import Path
 
 API = "https://api.salad.com/api/public"
-IMAGE = "ghcr.io/jtatman/kev-trainer:0.1.0"
+# Cloudflare in front of the API rejects Python's default urllib user-agent (error 1010)
+USER_AGENT = "kev-code-verify/0.1 (+https://github.com/jtatman/kev-code-verify)"
+IMAGE = "ghcr.io/jtatman/kev-trainer:0.1.1"
 
 
 def env(name, required=True):
@@ -42,7 +44,8 @@ def call(method, path, body=None):
     url = f"{API}/organizations/{env('SALAD_ORGANIZATION')}{path}"
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={
-        "Salad-Api-Key": env("SALAD_API_KEY"), "accept": "application/json", "content-type": "application/json"})
+        "Salad-Api-Key": env("SALAD_API_KEY"), "accept": "application/json", "content-type": "application/json",
+        "user-agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
             raw = resp.read()
@@ -51,8 +54,13 @@ def call(method, path, body=None):
     return json.loads(raw) if raw else {}
 
 
+def project():
+    """API project names are lowercase slugs; the portal may show a capitalised display name ("Default")."""
+    return env("SALAD_PROJECT").lower()
+
+
 def group_path(name=""):
-    return f"/projects/{env('SALAD_PROJECT')}/containers" + (f"/{name}" if name else "")
+    return f"/projects/{project()}/containers" + (f"/{name}" if name else "")
 
 
 def gpu_classes():
@@ -68,7 +76,7 @@ def create(args):
                "DATA_REPO": args.data_repo, "HF_TOKEN": env("HF_TOKEN", required=False) or env("HF_API_KEY"),
                # lets the container stop its own group when the job ends
                "SALAD_API_KEY": env("SALAD_API_KEY"), "SALAD_ORGANIZATION": env("SALAD_ORGANIZATION"),
-               "SALAD_PROJECT": env("SALAD_PROJECT"), "SALAD_CONTAINER_GROUP_NAME": args.name}
+               "SALAD_PROJECT": project(), "SALAD_CONTAINER_GROUP_NAME": args.name}
     if args.bf16:
         job_env.update(WEIGHTS_DTYPE="bf16", EVAL_DTYPE="bf16", BATCH="1", ACCUM="8")
     if env("TAILSCALE_AUTH_KEY", required=False):
@@ -77,8 +85,8 @@ def create(args):
         key, _, value = item.partition("=")
         job_env[key] = value
     body = {"name": args.name, "display_name": args.name, "replicas": 1, "autostart_policy": False,
-            "restart_policy": "on_failure",
-            "container": {"image": args.image, "priority": args.priority, "environment_variables": job_env,
+            "restart_policy": "on_failure", "priority": args.priority,   # group-level field in the API
+            "container": {"image": args.image, "environment_variables": job_env,
                           # vCPU count and memory in MB, as in SaladCloud's API quickstart
                           "resources": {"cpu": args.cpu, "memory": args.memory_mb,
                                         "gpu_classes": [by_name[g] for g in args.gpu]}}}
@@ -113,7 +121,7 @@ def main():
             print(f"{g['name']:<28} {g['id']}")
     elif args.action == "create":
         if not args.gpu:
-            args.gpu = ["RTX 3090", "RTX 4090"]
+            args.gpu = ["RTX 3090 (24 GB)", "RTX 3090 Ti (24 GB)", "RTX 4090 (24 GB)", "RTX A5000 (24 GB)"]
         create(args)
     elif args.action == "start":
         call("POST", group_path(args.name) + "/start")
