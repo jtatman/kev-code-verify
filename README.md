@@ -12,6 +12,10 @@ the data pipeline, a portable training image, and the scripts that ran each fine
 | [jtatman/kev-0.8b-code-verify-v1](https://huggingface.co/jtatman/kev-0.8b-code-verify-v1) | jaredpalmer/kev-0.8b | first fine-tune |
 | [jtatman/kev-4b-code-verify-v1](https://huggingface.co/jtatman/kev-4b-code-verify-v1) | jaredpalmer/kev-4b | bf16 backbone, one 24 GB GPU |
 
+**Dataset:** [jtatman/kev-code-verify-data](https://huggingface.co/datasets/jtatman/kev-code-verify-data): 4,428
+execution-labelled attempts by nine coders, generated tests, evidence, and the Kev/Laya training files
+(`load_dataset("jtatman/kev-code-verify-data", "kev")`).
+
 **Training image:** `ghcr.io/jtatman/kev-trainer:0.1.0` ([docker/](docker/README.md)): Kev's own trainer at a pinned
 commit, torch 2.8 + CUDA 12.8, a separate Laya env, Tailscale/sshd for remote access. Runs on SaladCloud, Hugging Face
 Jobs, rented VMs and local Docker.
@@ -51,7 +55,7 @@ python gen_attempts.py --base-url https://openrouter.ai/api/v1 --api-key-env OPE
 # 2. evidence: generated edge-case tests from the request, probed against every attempt
 python gen_evidence.py
 # 3. training files: task-grouped 70/15/15 split, one coder held out
-python build_finetune.py --holdout or:llama-3.1-8b
+python build_finetune.py --holdout or:llama-3.1-8b         # or use the published splits: DATA_REPO=jtatman/kev-code-verify-data
 # 4. fine-tune (any of)
 docker run --gpus all -e JOB=kev -e RUN_NAME=my-run -e HF_REPO=you/kev-code-verify-mine -e HF_TOKEN=... \
     -v $PWD/finetune/kev:/workspace/data ghcr.io/jtatman/kev-trainer:0.1.0

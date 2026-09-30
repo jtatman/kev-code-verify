@@ -37,7 +37,7 @@ SOURCES = {
     "or:ministral-3b": ("mistralai/Ministral-3-3B-Instruct-2512", "Apache-2.0", ""),
     "or:gemma-3-4b": ("google/gemma-3-4b-it", "Gemma Terms of Use",
                       "outputs used as labelled examples; the model is not trained to imitate Gemma"),
-    "ternary-qwen3.8-27b": ("local ternary (1-bit) quantization of a Qwen3.8-27B distillation", "unverified", ""),
+    "ternary-qwen3.8-27b": ("prism-ml/Ternary-Bonsai-2-27B-gguf (PTQ1_0; base Qwen/Qwen3.8-27B)", "Apache-2.0", ""),
     "reference-canonical": ("bigcode/humanevalpack canonical solutions", "MIT", ""),
     "reference-buggy": ("bigcode/humanevalpack buggy solutions", "MIT", ""),
 }
