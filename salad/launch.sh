@@ -7,6 +7,8 @@
 # Steps: optional wait for a marker line (aborts if the log reports a Traceback or the writer dies without it),
 # create the group, wait for the image pull, start, poll until the job's HF repo has run/DONE and the group is
 # stopped. MAX_RUN_HOURS (default 3) after start the group is stopped no matter what. Log: runs/salad/<group>.log
+# ATTACH=1 salad/launch.sh <group> <hf-repo>: skip create/start and watch a running group (cap counts from now).
+# The cap includes the node's image download (26 min on one home node), so budget for it.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 GROUP=${1:?group}; HF_REPO=${2:?hf repo}; shift 2
@@ -32,7 +34,9 @@ print(g.get("status"), g.get("instance_status_counts", {}).get("running_count"),
 EOF
 }
 
-if [[ -n "$WAIT_LOG" ]]; then
+if [[ -n "${ATTACH:-}" ]]; then   # re-attach to a group that is already running (e.g. to extend MAX_RUN_HOURS)
+    log "attaching to running $GROUP (MAX_RUN_HOURS=$MAX_RUN_HOURS from now)"
+elif [[ -n "$WAIT_LOG" ]]; then
     log "waiting for '$WAIT_MARKER' in $WAIT_LOG"
     until grep -q "$WAIT_MARKER" "$WAIT_LOG" 2>/dev/null; do
         if grep -q -E 'Traceback|Error:' "$WAIT_LOG" 2>/dev/null; then log "upstream log reports an error; not launching"; exit 1; fi
@@ -40,13 +44,14 @@ if [[ -n "$WAIT_LOG" ]]; then
     done
 fi
 
-log "creating $GROUP"
-$PY salad/deploy.py create "$GROUP" "$@" || { log "create failed"; exit 1; }
-for _ in $(seq 120); do read -r status _ _ <<<"$(state)"; [[ "$status" != pending ]] && break; sleep 30; done
-log "group status after image pull: $status"
-[[ "$status" == stopped ]] || { log "unexpected status; not starting"; exit 1; }
-
-$PY salad/deploy.py start "$GROUP"
+if [[ -z "${ATTACH:-}" ]]; then
+    log "creating $GROUP"
+    $PY salad/deploy.py create "$GROUP" "$@" || { log "create failed"; exit 1; }
+    for _ in $(seq 120); do read -r status _ _ <<<"$(state)"; [[ "$status" != pending ]] && break; sleep 30; done
+    log "group status after image pull: $status"
+    [[ "$status" == stopped ]] || { log "unexpected status; not starting"; exit 1; }
+    $PY salad/deploy.py start "$GROUP"
+fi
 started=$(date +%s); last=""
 while true; do
     read -r status running done <<<"$(state)"
