@@ -38,6 +38,8 @@ SOURCES = {
     "or:gemma-3-4b": ("google/gemma-3-4b-it", "Gemma Terms of Use",
                       "outputs used as labelled examples; the model is not trained to imitate Gemma"),
     "ternary-qwen3.8-27b": ("prism-ml/Ternary-Bonsai-2-27B-gguf (PTQ1_0; base Qwen/Qwen3.8-27B)", "Apache-2.0", ""),
+    "qwen3.5-9b-defiant-iq2m": ("mradermacher/Qwen3.5-9B-The-Defiant-Fable-Uncensored-Heretic-NEO-IMATRIX-MAX-MTP-i1-GGUF "
+                                "(IQ2_M; terms of base Qwen/Qwen3.5-9B)", "Apache-2.0", ""),
     "reference-canonical": ("bigcode/humanevalpack canonical solutions", "MIT", ""),
     "reference-buggy": ("bigcode/humanevalpack buggy solutions", "MIT", ""),
 }

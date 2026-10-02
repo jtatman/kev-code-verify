@@ -26,8 +26,10 @@ from gen_attempts import env_key
 from publish_hf import COLLECTION, PROJECT_URL, RUNS, SOURCES
 
 ROOT = Path(__file__).parent
-HELD_OUT = {"or:llama-3.1-8b": ("meta-llama/Llama-3.1-8B-Instruct", "Llama 3.1 Community License")}
-SPLITS = ("train", "calibration", "development", "test_unseen_coder", "test_unseen_coder_all_tasks")
+HELD_OUT = {"or:llama-3.1-8b": ("meta-llama/Llama-3.1-8B-Instruct", "Llama 3.1 Community License"),
+            "qwen3.5-9b-defiant-iq2m": ("mradermacher/Qwen3.5-9B-The-Defiant-Fable-Uncensored-Heretic-NEO-IMATRIX-MAX-MTP-i1-GGUF "
+                                        "(IQ2_M; terms of base Qwen/Qwen3.5-9B)", "Apache-2.0")}
+
 
 
 def source_table():
@@ -47,6 +49,8 @@ def card(repo_id):
     n_attempts, sources = source_table()
     manifest = json.loads((ROOT / "finetune" / "manifest.json").read_text())
     splits = manifest["splits"]
+    SPLITS = list(splits)   # train, calibration, development, then every held-out-coder split
+    held_out = manifest["holdout"] if isinstance(manifest["holdout"], list) else [manifest["holdout"]]
     split_rows = "\n".join(f"| {s} | {splits[s]['rows']} | {splits[s]['pass_rate']:.2f} |" for s in SPLITS)
     kev_configs = "\n".join(f"      - split: {s}\n        path: kev/{s}.jsonl" for s in SPLITS)
     models = "\n".join(f"- [jtatman/{name}](https://huggingface.co/jtatman/{name})" for name, _ in RUNS.values())
@@ -89,7 +93,7 @@ Code and full pipeline: {PROJECT_URL}
 {sources}
 
 `reference-canonical` / `reference-buggy` are HumanEvalPack's own correct and buggy solutions (a control set).
-`or:llama-3.1-8b` is **held out**: it appears only in the `test_unseen_coder*` splits.
+{", ".join(f"`{h}`" for h in held_out)} {"is" if len(held_out) == 1 else "are"} **held out**: they appear only in the `test_unseen*` splits.
 
 ## Files
 

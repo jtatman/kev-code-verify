@@ -7,17 +7,19 @@ The label is the hidden-test result.
 Splits are by task, so no task appears on two sides:
   train / calibration / development  - 70 / 15 / 15 of the 164 tasks, every coder except the held-out one,
                                        reference solutions (canonical + buggy) in train only
-  test_unseen_coder                  - the held-out coder on development tasks (unseen coder AND unseen tasks)
-  test_unseen_coder_all_tasks        - the held-out coder on every task (unseen coder only)
+  test_unseen_coder                  - the first held-out coder on development tasks (unseen coder AND unseen tasks)
+  test_unseen_coder_all_tasks        - the first held-out coder on every task (unseen coder only)
+  test_unseen_<coder>[_all_tasks]    - the same for each further held-out coder
 Identical states within a split are kept once. Rows over Kev's 2048-token request limit are dropped and counted.
 
 Writes finetune/kev/*.jsonl (Kev labelled records), finetune/laya/*.jsonl (Laya rows: state, questions and gold
 as JSON strings) and finetune/manifest.json.
-Usage: python build_finetune.py [--holdout or:llama-3.1-8b] [--seed 0]
+Usage: python build_finetune.py [--holdout CODER ...] [--seed 0]   (default holdouts: llama-3.1-8b, the local 9B)
 """
 import argparse
 import json
 import random
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -58,11 +60,26 @@ def laya_row(row_id, state, passed):
                                                                   "true": 1.0 if passed else 0.0}}})}
 
 
+DEFAULT_HOLDOUTS = ["or:llama-3.1-8b", "qwen3.5-9b-defiant-iq2m"]
+
+
+def unseen_split_names(coder, index):
+    """The first held-out coder keeps the original split names (results stay comparable across runs); each further
+    one gets test_unseen_<coder> / test_unseen_<coder>_all_tasks."""
+    if index == 0:
+        return "test_unseen_coder", "test_unseen_coder_all_tasks"
+    slug = re.sub(r"[^a-z0-9]+", "_", coder.split(":", 1)[-1].lower()).strip("_")
+    return f"test_unseen_{slug}", f"test_unseen_{slug}_all_tasks"
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--holdout", default="or:llama-3.1-8b")
+    parser.add_argument("--holdout", action="append",
+                        help="coder kept out of training (repeat for several); default: " + ", ".join(DEFAULT_HOLDOUTS))
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+    holdouts = args.holdout or DEFAULT_HOLDOUTS
+    test_splits = {h: unseen_split_names(h, i) for i, h in enumerate(holdouts)}
 
     tokenizer = Tokenizer.from_file(hf_hub_download("jaredpalmer/kev-0.8b", "tokenizer.json", revision=KEV_REVISION))
     question_tokens = len(tokenizer.encode(POST_QUESTION).ids) + 32  # instructions + template/marker overhead
@@ -84,8 +101,9 @@ def main():
             skipped["no generated-test probe yet"] += 1
             continue
         split = split_of[a["task_id"]]
-        if a["model"] == args.holdout:
-            targets = ["test_unseen_coder_all_tasks"] + (["test_unseen_coder"] if split == "development" else [])
+        if a["model"] in test_splits:
+            unseen, unseen_all = test_splits[a["model"]]
+            targets = [unseen_all] + ([unseen] if split == "development" else [])
         elif a["model"].startswith("reference"):
             if split != "train":
                 continue
@@ -102,14 +120,14 @@ def main():
             splits[target].append({"id": row["id"], "coder": a["model"], "task_id": a["task_id"], "state": state,
                                    "passed": bool(a["hidden"]["passed"]), "tokens": tokens})
 
-    manifest = {"seed": args.seed, "holdout": args.holdout, "kev_revision": KEV_REVISION, "question_id": QUESTION_ID,
+    manifest = {"seed": args.seed, "holdout": holdouts, "kev_revision": KEV_REVISION, "question_id": QUESTION_ID,
                 "instructions": POST_QUESTION, "tasks": {s: sorted({t for t in tasks if split_of[t] == s})
                                                          for s in ("train", "calibration", "development")},
                 "skipped": dict(skipped), "splits": {}}
     for fmt in ("kev", "laya"):
         (OUT / fmt).mkdir(parents=True, exist_ok=True)
     print(f"{'split':<30}{'rows':>6}{'dupes':>7}{'pass':>7}{'tokens p50/p95/max':>22}  coders")
-    for name in ("train", "calibration", "development", "test_unseen_coder", "test_unseen_coder_all_tasks"):
+    for name in ("train", "calibration", "development", *(n for pair in test_splits.values() for n in pair)):
         seen, rows = set(), []
         for r in splits[name]:
             fingerprint = json.dumps(r["state"], sort_keys=True)

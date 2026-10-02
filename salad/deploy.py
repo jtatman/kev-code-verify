@@ -25,7 +25,7 @@ from pathlib import Path
 API = "https://api.salad.com/api/public"
 # Cloudflare in front of the API rejects Python's default urllib user-agent (error 1010)
 USER_AGENT = "kev-code-verify/0.1 (+https://github.com/jtatman/kev-code-verify)"
-IMAGE = "ghcr.io/jtatman/kev-trainer:0.1.1"
+IMAGE = "ghcr.io/jtatman/kev-trainer:0.1.2"
 
 
 def env(name, required=True):

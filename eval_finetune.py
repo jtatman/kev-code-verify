@@ -17,7 +17,10 @@ import numpy
 from compare import auroc, coverage_at, ece
 
 ROOT = Path(__file__).parent
-SPLITS = ("development", "test_unseen_coder", "test_unseen_coder_all_tasks")
+def splits(run):
+    """development + every held-out-coder split this run predicted (test_unseen_coder*, test_unseen_<coder>*)."""
+    found = sorted(p.stem.removeprefix("preds_finetuned_") for p in (ROOT / "runs" / "finetune" / run).glob("preds_finetuned_*.jsonl"))
+    return ["development"] + [s for s in found if s != "development"]
 
 
 def load(run, label, split):
@@ -39,7 +42,7 @@ def main():
     run = sys.argv[1]
     evidence = {r["id"]: r["probs"][1] for r in map(json.loads, open(ROOT / "runs" / "routing_ev" / "preds_rule-evidence.jsonl"))}
     report = {}
-    for split in SPLITS:
+    for split in splits(run):
         ids, p_ft, y = load(run, "finetuned", split)
         _, p_base, _ = load(run, "baseline", split)
         ev = numpy.array([evidence[i] for i in ids])

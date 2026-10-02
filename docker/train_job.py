@@ -5,7 +5,7 @@ A port of the kev-finetune skill's Modal `run_train` without Modal. Stages (each
   1. train      python -m kev.train from the init checkpoint's own recipe, + public replay records
   2. calibrate  fit a temperature on calibration.jsonl (min NLL), score development.jsonl, write it into the checkpoint
   3. baseline   the init checkpoint on the same records, paired bootstrap (Kev's report shape: result.json)
-  4. preds      per-row p(true) for development and the held-out-coder test sets, fine-tuned and baseline
+  4. preds      per-row p(true) for development and every held-out-coder split (test_unseen*), fine-tuned and baseline
   5. publish    HF_REPO: checkpoint at the repo root, reports under run/; skipped if HF_REPO already holds run/DONE,
                 so a container restarted after finishing (SaladCloud does this) does not train again
 Outputs: OUT_ROOT/<RUN_NAME>/ (checkpoint/, result.json, train.log, preds_*.jsonl, DONE).
@@ -33,8 +33,12 @@ SUITE = KEV_ROOT / "evals/v7/decision-v7"
 DATA = Path(os.environ.get("DATA_DIR", "/workspace/data"))
 MAX_DELTA_LR = 5e-5
 QUESTION = "correct"
-SPLITS = ("train", "calibration", "development", "test_unseen_coder", "test_unseen_coder_all_tasks")
-PRED_SPLITS = ("development", "test_unseen_coder", "test_unseen_coder_all_tasks")
+REQUIRED = ("train", "calibration", "development")
+
+
+def test_splits():
+    """Every held-out-coder split present (test_unseen_coder*, test_unseen_<coder>*): predicted, never trained on."""
+    return sorted(p.stem for p in DATA.glob("test_unseen*.jsonl"))
 
 NAME = os.environ["RUN_NAME"]
 OUT = Path(os.environ.get("OUT_ROOT", "/workspace/out")) / NAME
@@ -97,13 +101,13 @@ def fetch_inputs():
         subdir = os.environ.get("DATA_SUBDIR", "kev")
         local = snapshot_download(os.environ["DATA_REPO"], repo_type="dataset", allow_patterns=[f"{subdir}/*"])
         DATA.mkdir(parents=True, exist_ok=True)
-        for split in SPLITS:
-            shutil.copy(Path(local) / subdir / f"{split}.jsonl", DATA / f"{split}.jsonl")
-    missing = [s for s in SPLITS if not (DATA / f"{s}.jsonl").exists()]
+        for path in (Path(local) / subdir).glob("*.jsonl"):
+            shutil.copy(path, DATA / path.name)
+    missing = [s for s in REQUIRED if not (DATA / f"{s}.jsonl").exists()]
     if missing:
         raise SystemExit(f"missing inputs in {DATA}: {missing}")
     if CONFIG["max_records"]:
-        for split in SPLITS:
+        for split in (*REQUIRED, *test_splits()):
             path = DATA / f"{split}.jsonl"
             lines = path.read_text().splitlines()[:CONFIG["max_records"]]
             path.write_text("\n".join(lines) + "\n")
@@ -165,7 +169,8 @@ def score(run_path, out, calibration, development):
         _, cal_rows = evaluate_records(calibration, predictor, Path(out) / "calibration")
         temperature = fit_temperature(cal_rows, aggregation="micro")
         report, rows = evaluate_records(development, predictor, Path(out) / "development", temperature)
-        per_row = {split: row_probabilities(predictor, DATA / f"{split}.jsonl", temperature) for split in PRED_SPLITS}
+        per_row = {split: row_probabilities(predictor, DATA / f"{split}.jsonl", temperature)
+                   for split in ("development", *test_splits())}
         return report, rows, temperature, per_row
     finally:
         del predictor

@@ -33,8 +33,8 @@ colab new --gpu "$GPU" -s "$SESSION"
 trap cleanup EXIT
 
 remote "import os; os.makedirs('/content/data', exist_ok=True); os.makedirs('/content/out', exist_ok=True)"
-for split in train calibration development test_unseen_coder test_unseen_coder_all_tasks; do
-    timeout 600 colab upload -s "$SESSION" "finetune/kev/$split.jsonl" "/content/data/$split.jsonl"
+for file in finetune/kev/*.jsonl; do   # train/calibration/development + every held-out-coder split
+    timeout 600 colab upload -s "$SESSION" "$file" "/content/data/$(basename "$file")"
 done
 timeout 600 colab upload -s "$SESSION" docker/train_job.py /content/kev_job.py   # the same job the training image runs
 
