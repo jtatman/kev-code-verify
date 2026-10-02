@@ -20,9 +20,11 @@ from build_states import POST_QUESTION
 from gen_attempts import env_key
 
 ROOT = Path(__file__).parent
+HARDWARE = {"code-verify-4b-v2": "one NVIDIA RTX 3090 Ti (SaladCloud, `ghcr.io/jtatman/kev-trainer:0.1.2`)"}
 RUNS = {  # run -> (repo name, one-line summary)
     "code-verify-08b-v2": ("kev-0.8b-code-verify-v2", "current best local judge: weak-coder data added"),
     "code-verify-08b-v1": ("kev-0.8b-code-verify-v1", "first fine-tune"),
+    "code-verify-4b-v2": ("kev-4b-code-verify-v2", "best judge: 4B with weak-coder data, trained on SaladCloud (RTX 3090 Ti)"),
     "code-verify-4b-v1": ("kev-4b-code-verify-v1", "4B, trained on a bf16 backbone on a single L4"),
 }
 PROJECT_URL = os.environ.get("PROJECT_URL", "https://github.com/jtatman/kev-code-verify")
@@ -73,6 +75,15 @@ def card(run, repo_id, summary):
     cfg = config["config"]
     trained_args = json.loads((out / "checkpoint" / "training_config.json").read_text())["args"]   # kev.train's own record
     unseen, dev = ev["test_unseen_coder_all_tasks"], ev["development"]
+    ninb_key = "test_unseen_qwen3_5_9b_defiant_iq2m_all_tasks"   # second held-out coder (runs after 2026-10-02)
+    ninb_section = ""
+    if ninb_key in ev:
+        ninb_rows = [json.loads(line) for line in open(out / f"preds_finetuned_{ninb_key}.jsonl")]
+        ninb_pass = sum(r["label"] for r in ninb_rows) / len(ninb_rows)
+        ninb_section = (f"Second unseen coder (local Qwen3.5-9B fine-tune, IQ2_M GGUF, never in training): {len(ninb_rows)} "
+                        f"attempts, pass rate {ninb_pass:.2f}.\n\n{results_table(ev[ninb_key])}\n\n")
+    held_out = "`llama-3.1-8b` and the local 9B coder held out" if ninb_section else "`llama-3.1-8b` held out"
+    hardware = HARDWARE.get(run, "one NVIDIA L4 (Google Colab)")
     counts = {}
     for row_id in (out / "ids" / "train.ids").read_text().split():
         counts[row_id.split("|")[0]] = counts.get(row_id.split("|")[0], 0) + 1
@@ -123,7 +134,7 @@ them wrong. `evidence score` = (request examples passed + generated-assert pass 
 
 {results_table(unseen)}
 
-Development (coders seen in training, tasks not seen):
+{ninb_section}Development (coders seen in training, tasks not seen):
 
 {results_table(dev)}
 
@@ -138,12 +149,12 @@ often the coder fails.
 ## Training
 
 - Init: `{init_rev}` (LoRA r=16 + pointer head, base `{base}`), Kev's own trainer (`kev.train`, commit {config.get('kev_ref', '')[:8]}).
-- Data: {n_train} execution-labelled records (task-grouped split; `llama-3.1-8b` held out) + {replay} public
+- Data: {n_train} execution-labelled records (task-grouped split; {held_out}) + {replay} public
   decision-v7 replay records against forgetting.
 - One epoch, lr {cfg['lr']}, batch {cfg['batch']} x accum {cfg['accum']}, gradient checkpointing, bf16 autocast,
   state limit {cfg.get('max_state')} tokens{', frozen backbone in bf16' if trained_args.get('weights_dtype') == 'bf16' else ''}.
 - Temperature fitted on a held-out calibration split (min NLL).
-- Hardware: one NVIDIA L4 (Google Colab).
+- Hardware: {hardware}.
 
 ## Training data provenance
 
