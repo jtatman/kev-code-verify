@@ -95,6 +95,34 @@ def create(args):
     print("created (stopped until the image is pulled; then: deploy.py start", args.name + ")")
 
 
+def serve(args):
+    """A short-lived inference group: kev.serve on a published checkpoint behind SaladCloud's Container Gateway.
+    The gateway gives https://<dns>; with auth on, callers send the Salad-Api-Key header. kev.serve must bind IPv6 (::).
+    No self-stop: the group serves until `stop` (salad/serve.sh stops it after a fixed number of hours)."""
+    by_name = {g["name"]: g["id"] for g in gpu_classes()}
+    missing = [g for g in args.gpu if g not in by_name]
+    if missing:
+        raise SystemExit(f"unknown GPU classes {missing}; available: {sorted(by_name)}")
+    port = 8000
+    server_env = {"HF_TOKEN": env("HF_TOKEN", required=False) or env("HF_API_KEY"), "KEV_DTYPE": args.dtype}
+    for item in args.env:
+        key, _, value = item.partition("=")
+        server_env[key] = value
+    body = {"name": args.name, "display_name": args.name, "replicas": args.replicas, "autostart_policy": False,
+            "restart_policy": "always", "priority": args.priority,
+            "networking": {"protocol": "http", "port": port, "auth": True},
+            "readiness_probe": {"http": {"path": "/v1/models", "port": port, "scheme": "http", "headers": []},
+                                "initial_delay_seconds": 20, "period_seconds": 10, "timeout_seconds": 5,
+                                "success_threshold": 1, "failure_threshold": 3},
+            "container": {"image": args.image, "environment_variables": server_env,
+                          "command": ["/opt/kev/bin/python", "-m", "kev.serve", "--run", args.run, "--host", "::",
+                                      "--port", str(port)],
+                          "resources": {"cpu": args.cpu, "memory": args.memory_mb,
+                                        "gpu_classes": [by_name[g] for g in args.gpu]}}}
+    result = call("POST", group_path(), body)
+    print(json.dumps({k: result.get(k) for k in ("name", "id", "current_state", "networking")}, indent=1))
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="action", required=True)
@@ -112,6 +140,17 @@ def main():
     c.add_argument("--memory-mb", type=int, default=30720)
     c.add_argument("--image", default=IMAGE)
     c.add_argument("--env", action="append", default=[], help="extra KEY=VALUE for the job")
+    v = sub.add_parser("serve", help="create an inference group (kev.serve behind the Container Gateway)")
+    v.add_argument("name")
+    v.add_argument("--run", required=True, help="checkpoint: HF repo id, e.g. jtatman/kev-4b-code-verify-v2")
+    v.add_argument("--replicas", type=int, default=1)
+    v.add_argument("--dtype", default="bf16", help="KEV_DTYPE for kev.serve (bf16 | fp32)")
+    v.add_argument("--gpu", action="append", default=[], help="GPU class name; repeat for several")
+    v.add_argument("--priority", default="low", choices=["high", "medium", "low", "batch"])
+    v.add_argument("--cpu", type=int, default=4)
+    v.add_argument("--memory-mb", type=int, default=16384)
+    v.add_argument("--image", default=IMAGE)
+    v.add_argument("--env", action="append", default=[], help="extra KEY=VALUE for the server")
     for action in ("start", "status", "stop", "delete"):
         sub.add_parser(action).add_argument("name")
     args = parser.parse_args()
@@ -123,6 +162,10 @@ def main():
         if not args.gpu:
             args.gpu = ["RTX 3090 (24 GB)", "RTX 3090 Ti (24 GB)", "RTX 4090 (24 GB)", "RTX A5000 (24 GB)"]
         create(args)
+    elif args.action == "serve":
+        if not args.gpu:
+            args.gpu = ["RTX 3090 (24 GB)", "RTX 3090 Ti (24 GB)", "RTX 4090 (24 GB)", "RTX A5000 (24 GB)"]
+        serve(args)
     elif args.action == "start":
         call("POST", group_path(args.name) + "/start")
         print("start requested")
@@ -135,6 +178,8 @@ def main():
     else:
         group = call("GET", group_path(args.name))
         print(json.dumps(group.get("current_state", {}), indent=1))
+        if group.get("networking", {}).get("dns"):
+            print("endpoint: https://" + group["networking"]["dns"])
         instances = call("GET", group_path(args.name) + "/instances").get("instances", [])
         for i in instances:
             print(f"  instance {i.get('machine_id', i.get('instance_id'))}: {i.get('state')} {i.get('update_time', '')}")
