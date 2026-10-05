@@ -18,7 +18,8 @@ import numpy
 from validate_thresholds import apply, fit_threshold
 
 ROOT = Path(__file__).parent
-SPLITS = ["development", "test_unseen_coder_all_tasks", "test_unseen_qwen3_5_9b_defiant_iq2m_all_tasks"]
+SPLITS = ["development", "test_unseen_coder_all_tasks", "test_unseen_qwen3_5_9b_defiant_iq2m_all_tasks",
+          "test_unseen_triumvirate_9b_q4km_all_tasks"]
 MIN_ATTEMPTS = 150   # below this a coder's own threshold is too noisy; it only contributes to the pooled rows
 
 
@@ -72,7 +73,7 @@ def fit_coder(rows, target):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run", default="code-verify-08b-v2-bf16")
+    parser.add_argument("--run", default="code-verify-08b-v2-served")   # the judge the router calls; has every split
     parser.add_argument("--target", type=float, default=0.05)
     parser.add_argument("--out", default="runs/router/kev_judge.json")
     args = parser.parse_args()

@@ -65,7 +65,8 @@ def main():
         rows = [{"p_true": p, "label": as_bool(r["questions"][QUESTION]["label"])} for (p, _), r in zip(answers, records)]
         with open(out / f"preds_finetuned_{split}.jsonl", "w") as f:
             f.writelines(json.dumps(row) + "\n" for row in rows)
-        shutil.copy(base / f"preds_finetuned_{split}.jsonl", out / f"preds_baseline_{split}.jsonl")
+        if (base / f"preds_finetuned_{split}.jsonl").exists():   # a split newer than the baseline run has none
+            shutil.copy(base / f"preds_finetuned_{split}.jsonl", out / f"preds_baseline_{split}.jsonl")
         seconds = sorted(s for _, s in answers)
         latencies[split] = {"records": len(rows), "wall_s": round(time.time() - start, 1),
                             "median_s": round(statistics.median(seconds), 3), "p95_s": round(seconds[int(0.95 * (len(seconds) - 1))], 3)}
