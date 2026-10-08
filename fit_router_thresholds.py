@@ -1,7 +1,8 @@
 """Per-coder accept thresholds for the router's Kev judge -> a JSON config the router reads.
 
 For each coder with labelled attempts scored by the judge run, and each score (Kev alone, mean(evidence, Kev)):
-the threshold is the lowest score that keeps accepted attempts at or under the target error. The score is chosen per
+the threshold is the lowest score that keeps accepted attempts at or under the target error. Each score is also tried
+with an evidence floor (a veto: under it the attempt is never accepted, however confident the judge). The score is chosen per
 coder by task-fold cross-validation (mean coverage, the realized error must stay at or under the target on average),
 then refit on all of that coder's attempts. Coders with too few attempts are pooled into `default`, which is also what
 a coder the config does not name gets: the most conservative (highest) of the fitted thresholds for each score.
@@ -37,10 +38,20 @@ def load(run):
     return rows
 
 
+FLOORS = [0.5, 0.75, 0.9, 1.0]   # evidence vetoes tried: 0.5 = the request's own examples must pass
+MIN_FLOOR = 0.5     # always applied: costs no CV coverage for any coder, and stops a confident judge keeping code local
+                    # when the request's own examples fail
+VETO_MARGIN = 0.01  # a fitted veto must beat the best unvetoed score's CV coverage by more than this (noise) to be used
+
+
 def scores_of(rows):
+    """Candidate accept scores. `<score>@<floor>`: the score, zeroed (never accepted) when evidence is under the floor,
+    so a confident judge cannot overrule failing checks it was shown."""
     tasks = numpy.array([r[0] for r in rows])
     kev, ev, passed = (numpy.array([r[i] for r in rows]) for i in (1, 2, 3))
-    return tasks, {"kev": kev, "blend": (kev + ev) / 2}, passed
+    base = {"kev": kev, "blend": (kev + ev) / 2}
+    vetoed = {f"{n}@{f}": numpy.where(ev >= f - 1e-9, s, 0.0) for n, s in base.items() for f in FLOORS}
+    return tasks, {**base, **vetoed}, passed
 
 
 def cross_validate(tasks, scores, passed, target, folds=5, repeats=20, seed=0):
@@ -67,7 +78,13 @@ def fit_coder(rows, target):
                                  "cv_coverage": round(cov, 3), "cv_error": round(err, 3)}
     usable = {n: v for n, v in entry["scores"].items() if v["threshold"] is not None and v["cv_error"] <= target + 0.005}   # CV error within noise of the target
     entry["score"] = max(usable, key=lambda n: usable[n]["cv_coverage"]) if usable else "kev"
+    plain = [n for n in usable if "@" not in n]
+    if plain and usable[entry["score"]]["cv_coverage"] - max(usable[n]["cv_coverage"] for n in plain) <= VETO_MARGIN:
+        entry["score"] = max(plain, key=lambda n: usable[n]["cv_coverage"])
+    entry["fitted_as"] = entry["score"]   # the scores key the threshold comes from
     entry["threshold"] = entry["scores"][entry["score"]]["threshold"]
+    entry["score"], _, floor = entry["score"].partition("@")
+    entry["evidence_floor"] = max(float(floor) if floor else 0.0, MIN_FLOOR)
     return entry
 
 
@@ -87,7 +104,7 @@ def main():
         pooled += coder_rows
     pooled_entry = fit_coder(pooled, args.target)
     # an unnamed coder: the most conservative threshold any fit produced, for the pooled fit's chosen score
-    score = pooled_entry["score"]
+    score = pooled_entry["fitted_as"]
     candidates = [e["scores"][score]["threshold"] for e in [*coders.values(), pooled_entry] if e["scores"][score]["threshold"]]
     default = {**pooled_entry, "threshold": max(candidates),
                "note": f"unnamed coders: highest {score} threshold over the fitted coders and the pooled fit"}
@@ -96,11 +113,12 @@ def main():
     out = ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(config, indent=1) + "\n")
-    print(f"{'coder':<28}{'n':>5}{'pass':>6}  {'score':<6}{'thr':>7}  kev cov/err   blend cov/err")
+    print(f"{'coder':<28}{'n':>5}{'pass':>6}  {'score':<6}{'thr':>7}{'floor':>6}  chosen cov/err  kev cov/err   blend cov/err")
     for name, e in config["coders"].items():
         k, b = e["scores"]["kev"], e["scores"]["blend"]
-        print(f"{name:<28}{e['attempts']:>5}{e['pass_rate']:>6.2f}  {e['score']:<6}{e['threshold']:>7.3f}"
-              f"  {k['cv_coverage']:.2f}/{k['cv_error']:.3f}   {b['cv_coverage']:.2f}/{b['cv_error']:.3f}")
+        c = e["scores"][e["fitted_as"]]
+        print(f"{name:<28}{e['attempts']:>5}{e['pass_rate']:>6.2f}  {e['score']:<6}{e['threshold']:>7.3f}{e['evidence_floor']:>6.2f}"
+              f"  {c['cv_coverage']:.2f}/{c['cv_error']:.3f}     {k['cv_coverage']:.2f}/{k['cv_error']:.3f}   {b['cv_coverage']:.2f}/{b['cv_error']:.3f}")
     print(f"-> {out}")
 
 
