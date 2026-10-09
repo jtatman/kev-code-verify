@@ -1,6 +1,6 @@
 .env
 .venv/
-exports/
+export/
 __pycache__/
 runs/
 finetune/
