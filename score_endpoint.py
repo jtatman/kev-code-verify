@@ -46,7 +46,8 @@ def main():
     parser.add_argument("endpoint")
     parser.add_argument("out_run")
     parser.add_argument("--splits", nargs="+", default=["development", "test_unseen_coder_all_tasks",
-                                                        "test_unseen_qwen3_5_9b_defiant_iq2m_all_tasks"])
+                                                        "test_unseen_qwen3_5_9b_defiant_iq2m_all_tasks",
+                        "test_unseen_triumvirate_9b_q4km_all_tasks"])
     parser.add_argument("--baseline-run", default="code-verify-4b-v2")
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()

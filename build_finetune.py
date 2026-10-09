@@ -60,7 +60,7 @@ def laya_row(row_id, state, passed):
                                                                   "true": 1.0 if passed else 0.0}}})}
 
 
-DEFAULT_HOLDOUTS = ["or:llama-3.1-8b", "qwen3.5-9b-defiant-iq2m"]
+DEFAULT_HOLDOUTS = ["or:llama-3.1-8b", "qwen3.5-9b-defiant-iq2m", "triumvirate-9b-q4km"]
 
 
 def unseen_split_names(coder, index):
